@@ -49,6 +49,26 @@ After the first load it works with zero signal.
 - **Responsive** — single-column on phones; ≥900px switches to a two-pane layout (rooms rail
   + room detail).
 
+## Beyond the brief (self-designed features)
+
+- **Walkthrough audit** — the Summary screen lists every group that was never reviewed
+  (no quantities, no "no action"), big-ticket Systems & Structure gaps first, each row
+  jumping straight to that group. Exporting with gaps open triggers a review-or-export
+  warning, so a missed furnace can't slip into an offer silently.
+- **Budget guardrail** — set an optional repair budget at intake; the sticky running total
+  shows % consumed and shifts amber at 80%, red when over. Budget and usage also appear on
+  the Summary screen and in the Excel export.
+- **Duplicate project** — one tap on a project card clones its rooms, quantities and price
+  overrides (not photos, notes or cover) as a starting point for a similar house.
+- **Dimension math** — type `12x14` into any quantity field (or use the L×W button on
+  square-footage items) and the area is computed on the spot.
+- **Condition grades** — tap A/B/C/D on any group to grade its condition even when no
+  repair is needed; grades show on group headers and export as a condition scorecard.
+- **Notes** — per-group notes (shown inline under that group's rows in the Excel export)
+  plus a project-level general note; a pencil mark flags noted groups.
+- **Cover photo** — the first photo taken prompts "use as house photo?"; any photo can be
+  made the cover later (or added from camera/gallery), and it appears on the project card.
+
 ## Offline behavior
 
 `service-worker.js` precaches the app shell and the CDN libraries (JSZip, SheetJS,

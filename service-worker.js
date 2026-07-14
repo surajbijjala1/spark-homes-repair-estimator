@@ -1,6 +1,6 @@
 // IMPORTANT: bump this version on EVERY release. index.html is precached at
 // install time, and installed clients only refetch it when this file changes.
-const CACHE_NAME = 'spark-estimator-v3';
+const CACHE_NAME = 'spark-estimator-v4';
 
 // App shell + the exact CDN libraries the app lazy-loads (export + OCR).
 // Tesseract's worker/core/language files are fetched at first OCR use and
