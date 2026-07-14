@@ -1,4 +1,6 @@
-const CACHE_NAME = 'spark-estimator-v2';
+// IMPORTANT: bump this version on EVERY release. index.html is precached at
+// install time, and installed clients only refetch it when this file changes.
+const CACHE_NAME = 'spark-estimator-v3';
 
 // App shell + the exact CDN libraries the app lazy-loads (export + OCR).
 // Tesseract's worker/core/language files are fetched at first OCR use and
@@ -11,7 +13,7 @@ const PRECACHE = [
   './assets/icons/icon-512.png',
   './assets/icons/maskable-512.png',
   'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
+  'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js',
   'https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js',
 ];
 

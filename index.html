@@ -326,11 +326,28 @@ const CATALOG = [
    roomType+group it seeds into, so new projects/rooms include it automatically. */
 let CUSTOM_CATALOG = [];
 try { CUSTOM_CATALOG = JSON.parse(localStorage.getItem('sh_catalog_custom')) || []; } catch(e){}
-function fullCatalog(){ return CATALOG.concat(CUSTOM_CATALOG); }
+/* ADOPTED: edited standard prices accepted as the new default (the ✓ in Settings).
+   REMOVED: base CSV items deleted from the price list (restorable). */
+let ADOPTED = {};
+try { ADOPTED = JSON.parse(localStorage.getItem('sh_catalog_adopted')) || {}; } catch(e){}
+let REMOVED = [];
+try { REMOVED = JSON.parse(localStorage.getItem('sh_catalog_removed')) || []; } catch(e){}
+function fullCatalog(){ return CATALOG.filter(c => !REMOVED.includes(c.id)).concat(CUSTOM_CATALOG); }
 let CAT = {};
-function rebuildCat(){ CAT = Object.fromEntries(fullCatalog().map(i => [i.id, i])); }
+function rebuildCat(){ CAT = Object.fromEntries(CATALOG.concat(CUSTOM_CATALOG).map(i => [i.id, i])); }
 rebuildCat();
-function saveCustomCatalog(){ localStorage.setItem('sh_catalog_custom', JSON.stringify(CUSTOM_CATALOG)); rebuildCat(); }
+function saveCustomCatalog(){
+  localStorage.setItem('sh_catalog_custom', JSON.stringify(CUSTOM_CATALOG));
+  localStorage.setItem('sh_catalog_adopted', JSON.stringify(ADOPTED));
+  localStorage.setItem('sh_catalog_removed', JSON.stringify(REMOVED));
+  rebuildCat();
+}
+/* current standard/default price for a catalog id (adopted edit wins over CSV) */
+function baseCost(id){
+  const c = CAT[id];
+  if (!c) return 0;
+  return ADOPTED[id] !== undefined ? ADOPTED[id] : c.cost;
+}
 
 /* Section → group → catalog-id mapping. Room instances copy these items. */
 const ROOM_TYPES = {
@@ -402,12 +419,12 @@ const Store = {
 
   makeItem(catalogId){
     const c = CAT[catalogId];
-    return { id: uid('li'), catalogId, name:c.name, unit:c.unit, unitCost:c.cost, qty:0, overrideCost:null };
+    return { id: uid('li'), catalogId, name:c.name, unit:c.unit, unitCost:baseCost(catalogId), qty:0, overrideCost:null };
   },
   makeRoom(type, num){
     const def = ROOM_TYPES[type]; const groups = {};
     for (const [g, ids] of Object.entries(def.groups))
-      groups[g] = { noAction:false, items: ids.map(id => this.makeItem(id)) };
+      groups[g] = { noAction:false, items: ids.filter(id => !REMOVED.includes(id)).map(id => this.makeItem(id)) };
     for (const c of CUSTOM_CATALOG)
       if (c.roomType === type && groups[c.group]) groups[c.group].items.push(this.makeItem(c.id));
     return { id: uid('rm'), type, instanceNum:num, label: def.multi ? type + ' ' + num : type, groups };
@@ -444,10 +461,13 @@ const Store = {
     this.save();
   },
 
-  /* price resolution: project override → global override → catalog snapshot */
+  /* price resolution: project override → global tweak → adopted default → snapshot */
   cost(item){
     if (item.overrideCost !== null && item.overrideCost !== undefined) return item.overrideCost;
-    if (item.catalogId && this.globalPrices[item.catalogId] !== undefined) return this.globalPrices[item.catalogId];
+    if (item.catalogId) {
+      if (this.globalPrices[item.catalogId] !== undefined) return this.globalPrices[item.catalogId];
+      if (ADOPTED[item.catalogId] !== undefined) return ADOPTED[item.catalogId];
+    }
     return item.unitCost;
   },
   groupTotal(g){ return g.noAction ? 0 : g.items.reduce((s,i) => s + this.cost(i) * (i.qty||0), 0); },
@@ -497,7 +517,8 @@ function loadScript(url){
 }
 const CDN = {
   jszip:'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
-  xlsx:'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
+  // xlsx-js-style = SheetJS community + cell styling (bold, borders, fills, number formats)
+  xlsx:'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js',
   tesseract:'https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js',
 };
 
@@ -519,11 +540,13 @@ function confirmModal(title, body){
 }
 
 /* ════════════════════════════ Router ═════════════════════════════ */
+/* Route lives in sessionStorage: an accidental mid-walkthrough refresh keeps your
+   place, but closing the tab and reopening starts fresh at the home screen. */
 let route = { screen:'projects', roomId:null };
-try { const r = JSON.parse(localStorage.getItem(LS.route)); if (r && r.screen) route = r; } catch(e){}
+try { const r = JSON.parse(sessionStorage.getItem(LS.route)); if (r && r.screen) route = r; } catch(e){}
 function go(screen, roomId){
   route = { screen, roomId: roomId || null };
-  localStorage.setItem(LS.route, JSON.stringify(route));
+  try { sessionStorage.setItem(LS.route, JSON.stringify(route)); } catch(e){}
   render();
 }
 
@@ -745,28 +768,39 @@ function renderSettings(){
   setHeader(`<button class="icbtn" data-nav="projects">${ICONS.back}</button><span class="ttl">Standard pricing<div class="sub">Applies to all projects</div></span>`);
   setTotalbar(false);
   const secs = { ig:'Interior / General', kt:'Kitchen', ba:'Bathrooms', as:'Systems & Structure', ex:'Exterior' };
+  const TYPE2SEC = { 'Interior / General':'ig', 'Kitchen':'kt', 'Bathroom':'ba', 'Systems & Structure':'as',
+                     'Exterior':'ex', 'Bedroom':'ig', 'Living / Common Areas':'ig' };
   const row = c => {
-    const cur = Store.globalPrices[c.id] !== undefined ? Store.globalPrices[c.id] : c.cost;
-    const chg = Store.globalPrices[c.id] !== undefined;
     const custom = c.id.startsWith('cu-');
+    const def = custom ? c.cost : baseCost(c.id);
+    const glb = Store.globalPrices[c.id];
+    const amber = glb !== undefined && Math.abs(glb - def) >= 0.005;
+    const cur = glb !== undefined ? glb : def;
+    const adopted = !custom && ADOPTED[c.id] !== undefined && Math.abs(ADOPTED[c.id] - CAT[c.id].cost) >= 0.005;
     return `<div class="setitem" data-setname="${esc(c.name.toUpperCase())}"><div class="sn2">${esc(c.name)}
-        <div class="un">${esc(c.unit)} · default ${fmt(c.cost)}${custom ? ` · ${esc(c.roomType)} → ${esc(c.group)}` : ''}</div></div>
-      ${chg ? `<button class="rst" data-reset="${c.id}">reset</button>` : ''}
-      ${custom ? `<button class="ix" data-delcustom="${c.id}" aria-label="Remove from price list">${ICONS.x}</button>` : ''}
-      <input type="number" step="0.01" inputmode="decimal" class="${chg ? 'chg' : ''}" data-gprice="${c.id}" value="${cur}"></div>`;
+        <div class="un">${esc(c.unit)} · default ${fmt(def)}${adopted ? ` <button class="rst" data-unadopt="${c.id}" title="Back to CSV price">(csv ${fmt(CAT[c.id].cost)})</button>` : ''}${custom ? ` · ${esc(c.roomType)} → ${esc(c.group)}` : ''}</div></div>
+      ${amber ? `<button class="rst" data-adopt="${c.id}" title="Make this the new default" style="color:var(--color-success);font-size:14px">✓</button>
+                 <button class="rst" data-reset="${c.id}">reset</button>` : ''}
+      ${custom ? `<button class="ix" data-editcustom="${c.id}" aria-label="Edit item" style="width:24px">${ICONS.edit}</button>` : ''}
+      <button class="ix" data-delcatalog="${c.id}" aria-label="Remove from price list" style="width:24px">${ICONS.x}</button>
+      <input type="number" step="0.01" inputmode="decimal" class="${amber ? 'chg' : ''}" data-gprice="${c.id}" value="${cur}"></div>`;
   };
   let html = `<div class="pad" style="max-width:640px;margin:0 auto;width:100%">
-    <p class="muted" style="margin-top:0">Edit standard unit costs below. Changes roll out to every project immediately, except items you priced manually inside a project.</p>
+    <p class="muted" style="margin-top:0">Edit standard unit costs below. Changes roll out to every project immediately, except items you priced manually inside a project. Tap ✓ to make an edited price the new default.</p>
     <div class="searchbar">${ICONS.search}<input id="set-search" placeholder="Search price list…" autocomplete="off"></div>
     <button class="btn dashed" data-addcatalog>${ICONS.plus} Add item to price list</button>`;
   for (const [pref, label] of Object.entries(secs)) {
-    const items = CATALOG.filter(c => c.id.startsWith(pref));
+    const items = CATALOG.filter(c => c.id.startsWith(pref) && !REMOVED.includes(c.id))
+      .concat(CUSTOM_CATALOG.filter(c => TYPE2SEC[c.roomType] === pref));
     html += `<div data-setsec><p class="eyebrow" style="margin-top:18px">${label}</p><div class="card" style="overflow:hidden">` +
       items.map(row).join('') + '</div></div>';
   }
-  if (CUSTOM_CATALOG.length)
-    html += `<div data-setsec><p class="eyebrow" style="margin-top:18px">Custom items</p><div class="card" style="overflow:hidden">` +
-      CUSTOM_CATALOG.map(row).join('') + '</div></div>';
+  if (REMOVED.length)
+    html += `<div data-setsec><p class="eyebrow" style="margin-top:18px">Removed items</p><div class="card" style="overflow:hidden">` +
+      REMOVED.map(id => CAT[id]).filter(Boolean).map(c => `
+        <div class="setitem" data-setname="${esc(c.name.toUpperCase())}"><div class="sn2" style="color:var(--text-muted)">${esc(c.name)}
+          <div class="un">${esc(c.unit)} · ${fmt(c.cost)}</div></div>
+          <button class="rst" data-restore="${c.id}">restore</button></div>`).join('') + '</div></div>';
   $app().innerHTML = html + '</div>';
   const search = document.getElementById('set-search');
   const applyFilter = () => {
@@ -820,6 +854,8 @@ async function getTess(){
   if (_tessWorker) return _tessWorker;
   await loadScript(CDN.tesseract);
   _tessWorker = await Tesseract.createWorker('eng');
+  // data plates are uppercase + digits — constraining the charset cuts misreads
+  await _tessWorker.setParameters({ tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-/#:. ' });
   return _tessWorker;
 }
 /* Line-aware serial extraction. Priority:
@@ -832,23 +868,28 @@ function extractSerial(text){
   const lines = (text || '').toUpperCase().split(/\n+/).map(l => l.trim()).filter(Boolean);
   const SER = /(?:\bS\s*\/?\s*N\b|[S5]ER[Il1]?[AL4]?L?\s*(?:N[O0]\.?|NUMBER|#)?|\bSERIAL\b)/;
   const MODEL = /MODEL|MDL|PROD|PART|P\s*\/\s*N|CAT\s*(?:NO|#)|MFR|TYPE/;
-  const tokens = s => s.match(/\b(?=[A-Z0-9\-]*\d)[A-Z0-9][A-Z0-9\-]{5,19}\b/g) || [];
+  // electrical/physical spec lines — voltages, amps, pressures etc. are never serials
+  const SPEC = /VOLT|VAC|\bV\b|\bHZ\b|PHASE|\bPH\b|AMP|\bA\b|WATT|\bW\b|\bKW\b|PSI|KPA|RLA|FLA|LRA|\bHP\b|BTU|LBS?\b|\bKG\b|\bMIN\b|\bMAX\b|CHARGE|SUPPLY|COOLING|PRESSURE|CIRCUIT|FUSE|BREAKER|REFRIGERANT|R-?\d{2,3}[A-Z]?\b/;
+  // spec-shaped tokens: 208-230, 115/230, 60HZ style fragments, pure short numbers
+  const SPECTOKEN = /^\d{2,3}[-/]\d{2,3}$|^\d{1,4}$|^R-?\d{2,3}[A-Z]?$/;
+  const tokens = (s, minLen) => (s.match(/\b(?=[A-Z0-9\-]*\d)[A-Z0-9][A-Z0-9\-]{5,19}\b/g) || [])
+    .filter(t => t.length >= minLen && !SPECTOKEN.test(t));
   const digitScore = t => t.replace(/[^0-9]/g, '').length / t.length;
 
   for (const ln of lines)
     if (SER.test(ln) && !MODEL.test(ln)) {
-      const t = tokens(ln.replace(SER, ' '));
-      if (t.length) return t[0];
+      const t = tokens(ln.replace(SER, ' '), 6);
+      if (t.length) return { value: t[0], tier: 1 };
     }
   for (let i = 0; i < lines.length; i++)
     if (SER.test(lines[i])) {
-      const t = tokens(lines[i].replace(SER, ' ')).concat(tokens(lines[i + 1] || ''));
-      if (t.length) return t[0];
+      const t = tokens(lines[i].replace(SER, ' '), 6).concat(tokens(lines[i + 1] || '', 6));
+      if (t.length) return { value: t[0], tier: 2 };
     }
   const cands = [];
-  for (const ln of lines) { if (MODEL.test(ln)) continue; cands.push(...tokens(ln)); }
+  for (const ln of lines) { if (MODEL.test(ln) || SPEC.test(ln)) continue; cands.push(...tokens(ln, 8)); }
   cands.sort((a, b) => (digitScore(b) - digitScore(a)) || (b.length - a.length));
-  return cands[0] || null;
+  return cands.length ? { value: cands[0], tier: 3 } : { value: null, tier: 9 };
 }
 /* Upscale + grayscale + contrast before OCR — data plates photographed at an
    angle in bad light read far better this way. Falls back to the original. */
@@ -875,8 +916,13 @@ async function runOCR(ph){
   try {
     const w = await getTess();
     const prepped = await preprocessForOCR(ph.dataUrl);
-    const { data } = await w.recognize(prepped);
-    ph.serial = extractSerial(data.text || '');
+    const r1 = extractSerial((await w.recognize(prepped)).data.text || '');
+    let best = r1;
+    if (r1.tier > 1) { // no confident label hit — second pass on the raw image
+      const r2 = extractSerial((await w.recognize(ph.dataUrl)).data.text || '');
+      if (r2.tier < r1.tier || (!r1.value && r2.value)) best = r2;
+    }
+    ph.serial = best.value;
   } catch(e) { ph.serial = null; }
   ph.ocr = 'done'; Store.save();
   if (route.screen === 'photos') render();
@@ -889,26 +935,66 @@ async function exportZip(){
   try {
     await Promise.all([loadScript(CDN.jszip), loadScript(CDN.xlsx)]);
     const wb = XLSX.utils.book_new();
+    /* ── shared styles (xlsx-js-style) ── */
+    const BR = { style:'thin', color:{ rgb:'C9C2B8' } };
+    const BORDER = { top:BR, bottom:BR, left:BR, right:BR };
+    const ST = {
+      title: { font:{ sz:16, bold:true, color:{ rgb:'8C3B26' } } },
+      label: { font:{ bold:true, color:{ rgb:'6B655F' } } },
+      head:  { font:{ bold:true, sz:11, color:{ rgb:'F7F2EA' } }, fill:{ fgColor:{ rgb:'3A3532' } },
+               border:BORDER, alignment:{ horizontal:'center', vertical:'center' } },
+      cell:  { border:BORDER },
+      money: { border:BORDER, numFmt:'"$"#,##0.00' },
+      total: { font:{ bold:true, sz:12, color:{ rgb:'8C3B26' } }, border:BORDER, numFmt:'"$"#,##0.00',
+               fill:{ fgColor:{ rgb:'EFE7D9' } } },
+      totalLbl: { font:{ bold:true, sz:12 }, border:BORDER, fill:{ fgColor:{ rgb:'EFE7D9' } } },
+    };
+    const applyRow = (ws, r, styles) => styles.forEach((s, c) => {
+      const ref = XLSX.utils.encode_cell({ r, c });
+      if (ws[ref] && s) ws[ref].s = s;
+    });
+
+    /* Summary sheet */
     const sum = [['Spark Group — Repair Estimate'], [],
       ['Project', p.name], ['Address', p.address], ['Sq Ft', p.sqft], ['Year Built', p.yearBuilt],
       ['Exported', new Date().toLocaleString()], [], ['Room', 'Subtotal']];
-    for (const r of p.rooms) { const t = Store.roomTotal(r); if (t > 0) sum.push([r.label, t]); }
-    sum.push([], ['TOTAL', Store.projectTotal(p)]);
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sum), 'Summary');
+    const roomRows = [];
+    for (const r of p.rooms) { const t = Store.roomTotal(r); if (t > 0) { sum.push([r.label, t]); roomRows.push(sum.length - 1); } }
+    sum.push(['TOTAL', Store.projectTotal(p)]);
+    const wsS = XLSX.utils.aoa_to_sheet(sum);
+    wsS['!cols'] = [{ wch:26 }, { wch:28 }];
+    wsS['A1'].s = ST.title;
+    for (const r of [2,3,4,5,6]) applyRow(wsS, r, [ST.label, null]);
+    applyRow(wsS, 8, [ST.head, ST.head]);
+    for (const r of roomRows) applyRow(wsS, r, [ST.cell, ST.money]);
+    applyRow(wsS, sum.length - 1, [ST.totalLbl, ST.total]);
+    XLSX.utils.book_append_sheet(wb, wsS, 'Summary');
 
+    /* Line Items sheet */
     const li = [['Room', 'Group', 'Item ID', 'Item', 'Qty', 'Unit', 'Unit Cost', 'Line Total']];
     for (const r of p.rooms) for (const [gname, g] of Object.entries(r.groups)) {
       if (g.noAction) continue;
       for (const i of g.items) if (i.qty > 0)
         li.push([r.label, gname, i.catalogId || 'custom', i.name, i.qty, i.unit, Store.cost(i), Store.cost(i) * i.qty]);
     }
-    li.push([], ['', '', '', '', '', '', 'TOTAL', Store.projectTotal(p)]);
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(li), 'Line Items');
+    li.push(['', '', '', '', '', '', 'TOTAL', Store.projectTotal(p)]);
+    const wsL = XLSX.utils.aoa_to_sheet(li);
+    wsL['!cols'] = [{ wch:22 }, { wch:20 }, { wch:9 }, { wch:36 }, { wch:7 }, { wch:10 }, { wch:12 }, { wch:13 }];
+    applyRow(wsL, 0, Array(8).fill(ST.head));
+    for (let r = 1; r < li.length - 1; r++)
+      applyRow(wsL, r, [ST.cell, ST.cell, ST.cell, ST.cell, ST.cell, ST.cell, ST.money, ST.money]);
+    applyRow(wsL, li.length - 1, [ST.cell, ST.cell, ST.cell, ST.cell, ST.cell, ST.cell, ST.totalLbl, ST.total]);
+    XLSX.utils.book_append_sheet(wb, wsL, 'Line Items');
 
+    /* Photos sheet */
     if (p.photos.length) {
       const ps = [['Filename', 'Serial Number', 'Captured']];
       p.photos.forEach((ph, k) => ps.push([`photos/photo-${String(k + 1).padStart(2, '0')}.jpg`, ph.serial || '', new Date(ph.ts).toLocaleString()]));
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ps), 'Photos');
+      const wsP = XLSX.utils.aoa_to_sheet(ps);
+      wsP['!cols'] = [{ wch:24 }, { wch:20 }, { wch:22 }];
+      applyRow(wsP, 0, Array(3).fill(ST.head));
+      for (let r = 1; r < ps.length; r++) applyRow(wsP, r, Array(3).fill(ST.cell));
+      XLSX.utils.book_append_sheet(wb, wsP, 'Photos');
     }
 
     const xbuf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
@@ -1011,15 +1097,37 @@ document.addEventListener('click', async e => {
     };
     return;
   }
-  if ((n = el('[data-delcustom]'))) {
-    const c = CUSTOM_CATALOG.find(x => x.id === n.dataset.delcustom);
-    if (await confirmModal('Remove from price list?', `"${c.name}" won't be seeded into new rooms anymore. Copies already in projects are kept.`)) {
-      CUSTOM_CATALOG = CUSTOM_CATALOG.filter(x => x.id !== c.id);
-      delete Store.globalPrices[c.id];
+  if ((n = el('[data-delcatalog]'))) {
+    const id = n.dataset.delcatalog;
+    const c = CAT[id];
+    if (await confirmModal('Remove from price list?', `"${c.name}" will disappear from the price list and won't be seeded into new rooms or projects. Copies already inside projects are kept.${id.startsWith('cu-') ? '' : ' You can restore it from the bottom of this page.'}`)) {
+      if (id.startsWith('cu-')) CUSTOM_CATALOG = CUSTOM_CATALOG.filter(x => x.id !== id);
+      else if (!REMOVED.includes(id)) REMOVED.push(id);
+      delete Store.globalPrices[id]; delete ADOPTED[id];
       saveCustomCatalog(); Store.save(); render();
     }
     return;
   }
+  if ((n = el('[data-restore]'))) {
+    REMOVED = REMOVED.filter(id => id !== n.dataset.restore);
+    saveCustomCatalog(); render(); return;
+  }
+  if ((n = el('[data-adopt]'))) {
+    const id = n.dataset.adopt;
+    const v = Store.globalPrices[id];
+    if (v !== undefined) {
+      const cc = CUSTOM_CATALOG.find(x => x.id === id);
+      if (cc) cc.cost = v; else ADOPTED[id] = v;
+      delete Store.globalPrices[id];
+      saveCustomCatalog(); Store.save(); render(); toast('Saved as new default');
+    }
+    return;
+  }
+  if ((n = el('[data-unadopt]'))) {
+    delete ADOPTED[n.dataset.unadopt];
+    saveCustomCatalog(); render(); toast('Back to CSV price'); return;
+  }
+  if ((n = el('[data-editcustom]'))) { openEditCustom(n.dataset.editcustom); return; }
   if ((n = el('[data-toggle]'))) {
     const room = Store.active().rooms.find(r => r.id === route.roomId);
     room._open = room._open || {};
@@ -1049,8 +1157,9 @@ document.addEventListener('click', async e => {
       if (!isNaN(v) && v >= 0) {
         // only mark an override when the value actually differs; typing the
         // standard price back clears the override entirely
-        const base = (item.catalogId && Store.globalPrices[item.catalogId] !== undefined)
-          ? Store.globalPrices[item.catalogId] : item.unitCost;
+        const base = item.catalogId !== null && Store.globalPrices[item.catalogId] !== undefined
+          ? Store.globalPrices[item.catalogId]
+          : (item.catalogId !== null && ADOPTED[item.catalogId] !== undefined ? ADOPTED[item.catalogId] : item.unitCost);
         if (Math.abs(v - base) < 0.005) item.overrideCost = null;
         else if (Math.abs(v - cur) >= 0.005 || item.overrideCost !== null) item.overrideCost = v;
         Store.save();
@@ -1101,7 +1210,9 @@ document.addEventListener('change', e => {
   if ((n = e.target.closest('[data-gprice]'))) {
     const id = n.dataset.gprice; const v = parseFloat(n.value);
     if (isNaN(v) || v < 0) { render(); return; }
-    if (Math.abs(v - CAT[id].cost) < 0.005) delete Store.globalPrices[id];
+    const cc = CUSTOM_CATALOG.find(x => x.id === id);
+    const def = cc ? cc.cost : baseCost(id);
+    if (Math.abs(v - def) < 0.005) delete Store.globalPrices[id];
     else Store.globalPrices[id] = v;
     Store.save(); render(); return;
   }
@@ -1167,6 +1278,43 @@ function openAddItem(gname){
         unitCost: parseFloat(m.querySelector('#ai-cost').value) || 0, qty: 1, overrideCost: null });
     }
     closeModal(); Store.save(); render();
+  };
+}
+
+/* edit an existing custom price-list item */
+function openEditCustom(id){
+  const c = CUSTOM_CATALOG.find(x => x.id === id);
+  if (!c) return;
+  const groupOpts = (t, sel) => Object.keys(ROOM_TYPES[t].groups)
+    .map(g => `<option ${g === sel ? 'selected' : ''}>${esc(g)}</option>`).join('');
+  const m = showModal(`<h3>Edit price-list item</h3>
+    <p class="muted" style="font-size:13px">Changes apply to new rooms/projects. Copies already inside projects keep their own settings.</p>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
+      <label class="field"><span>Item name</span><input id="ec-name" value="${esc(c.name)}"></label>
+      <div style="display:flex;gap:10px">
+        <label class="field"><span>Unit</span><input id="ec-unit" value="${esc(c.unit)}"></label>
+        <label class="field"><span>Unit cost $</span><input id="ec-cost" type="number" step="0.01" inputmode="decimal" value="${c.cost}"></label>
+      </div>
+      <label class="field"><span>Room type</span><select id="ec-type" style="margin-top:0;height:var(--tap);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);padding:0 10px;background:var(--bg-surface)">
+        ${Object.keys(ROOM_TYPES).map(t => `<option ${t === c.roomType ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
+      <label class="field"><span>Group</span><select id="ec-group" style="margin-top:0;height:var(--tap);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);padding:0 10px;background:var(--bg-surface)">
+        ${groupOpts(c.roomType, c.group)}</select></label>
+    </div>
+    <div class="mrow"><button class="btn ghost" data-a="c">Cancel</button><button class="btn primary" data-a="ok">Save</button></div>`);
+  m.querySelector('#ec-type').addEventListener('change', ev => {
+    m.querySelector('#ec-group').innerHTML = groupOpts(ev.target.value, '');
+  });
+  m.querySelector('[data-a=c]').onclick = closeModal;
+  m.querySelector('[data-a=ok]').onclick = () => {
+    const name = m.querySelector('#ec-name').value.trim();
+    if (!name) return;
+    c.name = name;
+    c.unit = m.querySelector('#ec-unit').value.trim() || 'ea.';
+    c.cost = parseFloat(m.querySelector('#ec-cost').value) || 0;
+    c.roomType = m.querySelector('#ec-type').value;
+    c.group = m.querySelector('#ec-group').value;
+    delete Store.globalPrices[c.id];
+    saveCustomCatalog(); Store.save(); closeModal(); render(); toast('Item updated');
   };
 }
 

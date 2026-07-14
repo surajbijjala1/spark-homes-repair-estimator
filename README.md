@@ -20,8 +20,8 @@ After the first load it works with zero signal.
 ## Features
 
 - **Multiple projects** — create, rename via property details, switch, and delete projects;
-  each keeps its own rooms, quantities, prices, notes and photos. The app reopens exactly
-  where you left off.
+  each keeps its own rooms, quantities, prices, notes and photos. A mid-walkthrough refresh
+  keeps your place; opening the app in a fresh tab starts at the home screen.
 - **108-item price list** from `Pricing List.csv` (single source of truth), organized into
   5 sections and collapsible groups. Every group has a **No action needed** checkbox so a
   group can be explicitly marked reviewed.
@@ -30,8 +30,10 @@ After the first load it works with zero signal.
 - **Pricing** — tap any unit price to override it for that project (shown amber). The
   Settings screen (gear icon on the home screen) edits **standard pricing globally**: changes
   roll out to every project immediately, except items already overridden in a project
-  (project override always wins). Resolution order: project override → global override →
-  CSV default.
+  (project override always wins). A ✓ next to an edited standard price **adopts it as the new
+  default**; every price-list item is searchable, deletable (with restore), and custom items
+  are fully editable. Resolution order: project override → global tweak → adopted default →
+  CSV price.
 - **Add/remove any line item** — every row can be deleted; items can be re-added from the
   full catalog picker or created as custom items (name/unit/cost).
 - **Progress** — per-group completion (any quantity > 0, or No-action) rolled up across all
@@ -41,8 +43,9 @@ After the first load it works with zero signal.
 - **Serial number OCR** — each photo is OCR'd on-device with Tesseract.js; serial-number-like
   strings (S/N, SER NO, etc.) are extracted, shown as an editable badge on the thumbnail, and
   included in the export.
-- **ZIP export** — from the Summary screen: `estimate.xlsx` (Summary, Line Items, Photos
-  sheets, built with SheetJS) plus `photos/photo-NN.jpg`, bundled with JSZip.
+- **ZIP export** — from the Summary screen: a styled `estimate.xlsx` (Summary, Line Items,
+  Photos sheets — bold headers, borders, currency formats, built with xlsx-js-style) plus
+  `photos/photo-NN.jpg`, bundled with JSZip.
 - **Responsive** — single-column on phones; ≥900px switches to a two-pane layout (rooms rail
   + room detail).
 
