@@ -1,8 +1,0 @@
-{
-  "name": "spark-homes-repair-estimator",
-  "private": true,
-  "description": "Offline-first repair cost estimator PWA for Spark Homes field acquisition teams.",
-  "scripts": {
-    "dev": "npx serve ."
-  }
-}

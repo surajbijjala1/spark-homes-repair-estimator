@@ -1,7 +1,7 @@
 {
-  "name": "Spark Homes Repair Estimator",
+  "name": "Spark Group Repair Estimator",
   "short_name": "Repair Estimator",
-  "description": "Offline-first repair cost estimator for field use by acquisition teams.",
+  "description": "Offline-first repair cost estimator for property walkthroughs.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
@@ -9,17 +9,8 @@
   "background_color": "#F7F2EA",
   "theme_color": "#3A3532",
   "icons": [
-    {
-      "src": "./assets/icons/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "./assets/icons/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    }
+    { "src": "./assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./assets/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

@@ -1,61 +1,73 @@
-# Spark Homes — Repair Estimator
+# Spark Group — Repair Estimator
 
-Offline-first repair cost estimator PWA for field use by Spark Homes acquisition teams. Walk a
-property, log repairs room by room against a built-in price list, and get a running cost
-estimate — no signal required after the first load.
+Mobile-first, offline-first repair cost estimator PWA for the Spark Group acquisition team.
+Walk a property, log repairs room by room against the standard price list, capture photos of
+data plates, and export the estimate as a ZIP (Excel breakdown + photos).
 
-## What this is
+## Run it
 
-A zero-build static app: plain HTML/CSS/JS, React loaded via CDN, no bundler or transpile step.
-State lives in `localStorage` on the device — there's no backend and no sync between devices.
-
-## Run locally
+The whole app is **one self-contained `index.html`** — vanilla JS, no build step, no server
+logic. Serve the folder over http(s) (service workers don't register from `file://`):
 
 ```
-npm run dev
+python3 -m http.server 8000
+# or: npx serve .
 ```
 
-This runs `npx serve .` and prints a local URL. Service workers require an http(s) origin, so
-opening `index.html` directly via `file://` won't register offline support (the app will still
-render, just without the offline cache).
+Open the URL on your phone and use **Add to Home Screen** to install it as a standalone app.
+After the first load it works with zero signal.
 
-## Install as a PWA
+## Features
 
-Open the served URL in Chrome or Safari on your phone and use "Add to Home Screen" — the app
-installs standalone (no browser chrome) using the icons and colors in `manifest.json`.
+- **Multiple projects** — create, rename via property details, switch, and delete projects;
+  each keeps its own rooms, quantities, prices, notes and photos. The app reopens exactly
+  where you left off.
+- **108-item price list** from `Pricing List.csv` (single source of truth), organized into
+  5 sections and collapsible groups. Every group has a **No action needed** checkbox so a
+  group can be explicitly marked reviewed.
+- **Adjustable rooms** — Bathrooms, Bedrooms and Living/Common Areas are added/removed as
+  instances ("Bathroom 2: Tub & Shower"); labels renumber automatically.
+- **Pricing** — tap any unit price to override it for that project (shown amber). The
+  Settings screen (gear icon on the home screen) edits **standard pricing globally**: changes
+  roll out to every project immediately, except items already overridden in a project
+  (project override always wins). Resolution order: project override → global override →
+  CSV default.
+- **Add/remove any line item** — every row can be deleted; items can be re-added from the
+  full catalog picker or created as custom items (name/unit/cost).
+- **Progress** — per-group completion (any quantity > 0, or No-action) rolled up across all
+  rooms, shown as a bar plus per-room progress rings.
+- **Photos** — camera capture (`<input capture="environment">`), downscaled to ≤1280px JPEG
+  before storage, thumbnails with individual delete.
+- **Serial number OCR** — each photo is OCR'd on-device with Tesseract.js; serial-number-like
+  strings (S/N, SER NO, etc.) are extracted, shown as an editable badge on the thumbnail, and
+  included in the export.
+- **ZIP export** — from the Summary screen: `estimate.xlsx` (Summary, Line Items, Photos
+  sheets, built with SheetJS) plus `photos/photo-NN.jpg`, bundled with JSZip.
+- **Responsive** — single-column on phones; ≥900px switches to a two-pane layout (rooms rail
+  + room detail).
 
-## How data persists
+## Offline behavior
 
-Everything (property details, rooms, line items, photos) is saved to `localStorage` under the
-`spark_homes_projects` key on every change. Clearing browser data / site data wipes it. Only one
-active project is kept at a time.
+`service-worker.js` precaches the app shell and the CDN libraries (JSZip, SheetJS,
+Tesseract.js) on install; everything else fetched at runtime (Tesseract worker/core/language
+data on the first photo) is cached as it loads. Practical rule: **first load and the first
+OCR'd photo need a connection; everything afterwards works fully offline.** Data lives in
+`localStorage` — clearing site data wipes projects.
 
-## Architecture
+## Files
 
-- `index.html` — entry point: loads the design tokens, fonts, React via CDN, then the app scripts
-  in dependency order, then `js/main.js` to mount and register the service worker.
-- `tokens/*.css`, `styles.css` — the Spark Homes design system (colors, type, spacing).
-- `js/priceList.js` — the default repair price list (75+ items / 7 room types / 19 groups) and
-  project/room factory functions.
-- `js/appState.js` — `localStorage` persistence, totals, and progress calculations.
-- `js/RoomManager.js`, `js/SectionView.js`, `js/PhotoCapture.js` — UI components.
-- `js/EstimatorApp.js` — the app shell/router (home → intake → rooms → room detail → photos →
-  totals).
-- `service-worker.js` — cache-first app-shell strategy so the app works with zero signal after
-  the first load.
+```
+index.html          the entire app (CSS, fonts, logo, catalog, JS — all inline)
+service-worker.js   offline cache (separate file by browser requirement)
+manifest.json       PWA install metadata
+assets/icons/       home-screen icons (from Spark Group - Logo.png)
+Pricing List.csv    price list source of truth (embedded into index.html at authoring time)
+Spark Group - Logo.png  brand source asset
+```
 
-## Known trade-off
+## Updating prices in the CSV
 
-React and ReactDOM are loaded from `unpkg.com` rather than vendored locally. The service worker
-caches them after the first successful load, so the app works fully offline on every visit after
-that — but the very first load needs a network connection. If you'd rather have zero network
-dependency even on first load, vendor `react.production.min.js` and
-`react-dom.production.min.js` locally and update the `<script>` tags in `index.html` plus the
-`APP_SHELL` list in `service-worker.js`.
-
-## Not yet built
-
-The desktop/web shell (`EstimatorWeb.js` equivalent) — the mobile shell here (`EstimatorApp.js`)
-was the requested scope. It reuses the same `RoomManager`/`SectionView`/`PhotoCapture`/
-`appState`/`priceList` files, so adding it is a small follow-up: a new `EstimatorWeb.js` shell
-plus a second entry point.
+`Pricing List.csv` is embedded into `index.html` as the `CATALOG` constant at authoring time
+(the app never fetches the CSV at runtime, so it stays single-file/offline). If the CSV
+changes, regenerate the constant and replace the `const CATALOG = [...]` block in
+`index.html`. Day-to-day price adjustments don't need that — use the in-app Settings screen.

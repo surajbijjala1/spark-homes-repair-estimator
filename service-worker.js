@@ -1,65 +1,50 @@
-const CACHE_NAME = 'spark-homes-estimator-v1';
+const CACHE_NAME = 'spark-estimator-v2';
 
-const APP_SHELL = [
+// App shell + the exact CDN libraries the app lazy-loads (export + OCR).
+// Tesseract's worker/core/language files are fetched at first OCR use and
+// picked up by the runtime-caching fetch handler below.
+const PRECACHE = [
   './',
   './index.html',
   './manifest.json',
-  './styles.css',
-  './tokens/colors.css',
-  './tokens/typography.css',
-  './tokens/spacing.css',
-  './tokens/fonts.css',
-  './js/priceList.js',
-  './js/appState.js',
-  './js/SectionView.js',
-  './js/RoomManager.js',
-  './js/PhotoCapture.js',
-  './js/EstimatorApp.js',
-  './js/main.js',
-  './assets/fonts/SpaceGrotesk-Variable.woff2',
-  './assets/fonts/WorkSans-Variable.woff2',
-  './assets/logo/spark-homes-logo.png',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png',
-  'https://unpkg.com/react@18/umd/react.production.min.js',
-  'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js',
+  './assets/icons/maskable-512.png',
+  'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js',
 ];
 
-self.addEventListener('install', function(event) {
+self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(function(cache) {
-      return cache.addAll(APP_SHELL);
-    }).then(function() {
-      return self.skipWaiting();
-    })
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(PRECACHE))
+      .then(() => self.skipWaiting())
   );
 });
 
-self.addEventListener('activate', function(event) {
+self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then(function(keys) {
-      return Promise.all(
-        keys.filter(function(key) { return key !== CACHE_NAME; })
-            .map(function(key) { return caches.delete(key); })
-      );
-    }).then(function() {
-      return self.clients.claim();
-    })
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
+      .then(() => self.clients.claim())
   );
 });
 
-self.addEventListener('fetch', function(event) {
+self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   event.respondWith(
-    caches.match(event.request).then(function(cached) {
+    caches.match(event.request).then(cached => {
       if (cached) return cached;
-      return fetch(event.request).then(function(response) {
-        if (response.ok) {
-          var copy = response.clone();
-          caches.open(CACHE_NAME).then(function(cache) { cache.put(event.request, copy); });
+      return fetch(event.request).then(response => {
+        // Cache successful same-origin/CORS responses AND opaque cross-origin
+        // ones (script/worker loads) so OCR + export work offline after first use.
+        if (response.ok || response.type === 'opaque') {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
         }
         return response;
-      }).catch(function() {
+      }).catch(() => {
         if (event.request.mode === 'navigate') return caches.match('./index.html');
       });
     })
