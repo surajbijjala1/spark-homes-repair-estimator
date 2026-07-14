@@ -1,0 +1,27 @@
+:root {
+  /* 4px base spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Corner radii — soft but not pill-shaped; field app, not consumer social app */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 999px;
+
+  /* Shadows — soft, warm-toned (not pure black) to sit on cream backgrounds */
+  --shadow-sm: 0 1px 2px rgba(58, 53, 50, 0.08);
+  --shadow-md: 0 4px 12px rgba(58, 53, 50, 0.10);
+  --shadow-lg: 0 8px 24px rgba(58, 53, 50, 0.14);
+
+  /* Minimum touch target for field use (gloved hands, bright sun, one-handed) */
+  --tap-target-min: 48px;
+}
