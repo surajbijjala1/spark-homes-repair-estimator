@@ -52,9 +52,22 @@ After the first load it works with zero signal.
 ## Beyond the brief (self-designed features)
 
 - **Walkthrough audit** — the Summary screen lists every group that was never reviewed
-  (no quantities, no "no action"), big-ticket Systems & Structure gaps first, each row
-  jumping straight to that group. Exporting with gaps open triggers a review-or-export
-  warning, so a missed furnace can't slip into an offer silently.
+  (no quantities, no "no action"), big-ticket Systems & Structure gaps first. Each row
+  shows status (reviewed, items entered, no action) and a clickable link that jumps
+  straight to that group in the walkthrough. The "No action" checkbox is available
+  directly in the audit row. Exporting with gaps open triggers a review-or-export
+  warning, so a missed furnace can't slip into an offer silently. The summary audit is
+  **read-only by design** — no inline editing — keeping the walkthrough as the single
+  source for entering data.
+- **Deal analyzer** — a dedicated screen (accessible from Summary) computes key flip
+  metrics from optional **purchase price** and **ARV** fields entered at intake: all-in
+  cost, gross profit, gross margin, ROI, the **70% Rule** max purchase price, and a
+  traffic-light **deal verdict** (Strong / Tight / Pass). Lets the team text a go/no-go
+  to the acquisitions lead before leaving the property.
+- **Scope-of-work generator** — one-tap shareable text SOW from the Summary screen.
+  Formatted room-by-room with quantities, unit costs, line totals, condition ratings and
+  notes. Uses the native **Share API** on mobile (text a contractor instantly) with
+  clipboard fallback on desktop.
 - **Budget guardrail** — set an optional repair budget at intake; the sticky running total
   shows % consumed and shifts amber at 80%, red when over. Budget and usage also appear on
   the Summary screen and in the Excel export.
@@ -62,7 +75,7 @@ After the first load it works with zero signal.
   overrides (not photos, notes or cover) as a starting point for a similar house.
 - **Dimension math** — type `12x14` into any quantity field (or use the L×W button on
   square-footage items) and the area is computed on the spot.
-- **Condition grades** — tap A/B/C/D on any group to grade its condition even when no
+- **Condition grades** — tap 1–5 stars on any group to grade its condition even when no
   repair is needed; grades show on group headers and export as a condition scorecard.
 - **Notes** — per-group notes (shown inline under that group's rows in the Excel export)
   plus a project-level general note; a pencil mark flags noted groups.
